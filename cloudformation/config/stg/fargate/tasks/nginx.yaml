@@ -14,5 +14,5 @@ parameters:
   ImageVersion: 'latest'
   ServiceName: 'nginx'
   Priority: "1"
-  DesiredCount: "0"
+  DesiredCount: "3"
   PlatformVersion: "1.4.0"
