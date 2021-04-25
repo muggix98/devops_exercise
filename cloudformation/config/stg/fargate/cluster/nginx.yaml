@@ -1,9 +1,7 @@
 template_path: fargate/cluster/cluster.yaml
 parameters:
   VpcId:  !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::VpcId
-  VpcPrivateSubnetsIds: !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::PrivateSubnetsList
   VpcPublicSubnetsIds: !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::PublicSubnetsList
   Environment: {{ stack_group_config.env }}
   ClusterName: {{ stack_group_config.project_code }}
   PublicBalancer: "True"
-  PrivateBalancer: "False"

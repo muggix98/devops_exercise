@@ -13,40 +13,20 @@ Parameters:
     Type: String
     Default: True
     Description: Use a Public Load Balancer for the services. 
-  PrivateBalancer:
-    Type: String
-    Default: false
-    Description: Use a Private Load Balancer for the services. 
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description:  VPC Id
   VpcPublicSubnetsIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: 'Choose at least two subnets in your selected VPC with the same type (Public or Private).'
-  VpcPrivateSubnetsIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: 'Choose at least two subnets in your selected VPC with the same type (Public or Private).'
   ContainerPort:
     Type: String
     Description: Port used by container to allow access from ALB
     Default: 80
-  NameBucketOfAccessLogs:
-    Type: String
-    Description: The name of bucket where will save the ELB Access Logs
-    Default: ''
-  ListenerHostRedirect:
-    Type: String
-    Description: Domain name for redirect
-    Default: ''
-  ListenerHTTPRulePath:
-    Type: String
-    Description: Specify the path to block
-    Default: ''
     
 Conditions:
   HasClusterName: !Not [ !Equals [!Ref 'ClusterName', ""] ]
   UsePublicLoadBalancer: !Equals [!Ref 'PublicBalancer', 'True']
-  UsePrivateLoadBalancer: !Equals [!Ref 'PrivateBalancer', 'True']
 
 Resources: 
 
@@ -151,17 +131,6 @@ Resources:
       GroupId: !Ref 'FargateContainerSecurityGroup'
       SourceSecurityGroupId: !Ref 'PublicLoadBalancerSG'
 
-  EcsSecurityGroupIngressFromPrivateALB:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: UsePrivateLoadBalancer
-    Properties:
-      Description: Ingress from the private ALB
-      IpProtocol: tcp
-      FromPort: !Ref ContainerPort
-      ToPort: !Ref ContainerPort
-      GroupId: !Ref 'FargateContainerSecurityGroup'
-      SourceSecurityGroupId: !Ref 'PrivateLoadBalancerSG'
-
   EcsSecurityGroupIngressFromSelf:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -170,18 +139,6 @@ Resources:
       GroupId: !Ref 'FargateContainerSecurityGroup'
       SourceSecurityGroupId: !Ref 'FargateContainerSecurityGroup' 
 
-  # Load balancers for getting traffic to containers.
-  #
-  # - One public load balancer, hosted in public subnets that is accessible
-  #   to the public, and is intended to route traffic to one or more public
-  #   facing services.
-  # - One private load balancer, hosted in private subnets, that only
-  #   accepts traffic from other containers in the Fargate cluster, and is
-  #   intended for private services that should not be accessed directly
-  #   by the public.
-
-  # A public facing load balancer, this is used for accepting traffic from the public
-  # internet and directing it to public facing microservices
   PublicLoadBalancerSG:
     Type: AWS::EC2::SecurityGroup
     Condition: UsePublicLoadBalancer
@@ -245,92 +202,12 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  # An internal load balancer, this would be used for a service that is not
-  # directly accessible to the public, but instead should only receive traffic
-  # from your other services.
-  PrivateLoadBalancerSG:
-    Type: AWS::EC2::SecurityGroup
-    Condition: UsePrivateLoadBalancer
-    Properties:
-      GroupDescription: Access to the internal load balancer
-      VpcId: !Ref 'VpcId'
-      SecurityGroupIngress:
-          # Allow access to ALB from anywhere on the internet
-          - CidrIp: 0.0.0.0/0
-            IpProtocol: tcp
-            FromPort: 80
-            ToPort: 80
-      Tags:
-        -
-          Key: Name
-          Value: !Sub "${AWS::StackName}-private-alb-sg"
-
-
-  PrivateLoadBalancerIngressFromECS:
-    Type: AWS::EC2::SecurityGroupIngress
-    Condition: UsePrivateLoadBalancer
-    Properties:
-      Description: Only accept traffic from a container in the fargate container security group
-      GroupId: !Ref 'PrivateLoadBalancerSG'
-      IpProtocol: -1
-      SourceSecurityGroupId: !Ref 'FargateContainerSecurityGroup'
-
-  PrivateLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Condition: UsePrivateLoadBalancer
-    Properties:
-      Name: !Join ['',[ !Ref 'ClusterName','-Private']]
-      Scheme: internal
-      LoadBalancerAttributes:
-      - Key: idle_timeout.timeout_seconds
-        Value: '30'
-      Subnets:
-        # This load balancer is put into the private subnet, so that there is no
-        # route for the public to even be able to access the private load balancer.
-        - !Select [0, !Ref VpcPrivateSubnetsIds]
-        - !Select [1, !Ref VpcPrivateSubnetsIds]
-        - !Select [2, !Ref VpcPrivateSubnetsIds]
-      SecurityGroups: [!Ref 'PrivateLoadBalancerSG']
-
-  # This dummy target group is used to setup the ALB to just drop traffic
-  # initially, before any real service target groups have been added.
-
-  DummyTargetGroupPrivate:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Condition: UsePrivateLoadBalancer
-    Properties:
-      HealthCheckIntervalSeconds: 6
-      HealthCheckPath: /
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Port: 80
-      Protocol: HTTP
-      UnhealthyThresholdCount: 2
-      VpcId: !Ref 'VpcId'
-
-  PrivateLoadBalancerListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Condition: UsePrivateLoadBalancer
-    DependsOn:
-      - PrivateLoadBalancer
-    Properties:
-      DefaultActions:
-        - TargetGroupArn: !Ref 'DummyTargetGroupPrivate'
-          Type: 'forward'
-      LoadBalancerArn: !Ref 'PrivateLoadBalancer'
-      Port: 80
-      Protocol: HTTP
 
 # These are the values output by the CloudFormation template.
 Outputs:
   ClusterName:
     Description: The name of the ECS cluster
     Value: !Ref 'ECSCluster'
-  InternalUrl:
-    Condition: UsePrivateLoadBalancer
-    Description: The url of the internal load balancer
-    Value: !Join ['', ['http://', !GetAtt 'PrivateLoadBalancer.DNSName']]
   ExternalUrl:
     Condition: UsePublicLoadBalancer
     Description: The url of the external load balancer
@@ -345,10 +222,6 @@ Outputs:
     Condition: UsePublicLoadBalancer
     Description: The ARN of the public load balancer's Listener
     Value: !Ref PublicLoadBalancerListener
-  PrivateListener:
-    Condition: UsePrivateLoadBalancer
-    Description: The ARN of the public load balancer's Listener
-    Value: !Ref PrivateLoadBalancerListener
   FargateContainerSecurityGroup:
     Description: A security group used to allow Fargate containers to receive traffic
     Value: !Ref 'FargateContainerSecurityGroup'
@@ -363,10 +236,6 @@ Outputs:
     Condition: UsePublicLoadBalancer
     Description: Public Load Balancer Id
     Value: !GetAtt 'PublicLoadBalancer.DNSName'
-  PrivateBalancerDNS:
-    Condition: UsePrivateLoadBalancer
-    Description: Public Load Balancer Id
-    Value: !GetAtt 'PrivateLoadBalancer.DNSName'
   PublicLoadBalancerFullName:
     Condition: UsePublicLoadBalancer
     Description: Full Load Balancer Name
