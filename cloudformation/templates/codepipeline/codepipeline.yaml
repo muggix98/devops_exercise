@@ -172,6 +172,8 @@ Resources:
         EnvironmentVariables:
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+          - Name: SERVICE
+            Value: !Ref Service
       Name: !If ['HasProjectName', !Join ['',[!Ref Environment,'-',!Ref 'ProjectName']], !Ref "AWS::NoValue"]
       ServiceRole: !Ref CodeBuildServiceRole
       VpcConfig:
