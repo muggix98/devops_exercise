@@ -13,7 +13,8 @@ phases:
   post_build:
     commands:
       - docker run --name ahsan-nginx -d -p 8080:80 "${REPOSITORY_URI}:latest"
-      - if [ $? -eq 1]; then \
+      - >
+        if [ $? -eq 1]; then \
           exit 1 \
         fi
       - docker push "$IMAGE_URI"
