@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template for creating a ECR repository
+Parameters:
+  RepositoryName:
+    Type: String
+    Description: Name of Image ECR repository
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    Properties:
+      RepositoryName: !Ref RepositoryName
+
+Outputs:
+  Repository:
+    Description: The name of the Ecr Repository
+    Value: !Ref 'Repository'
+  RepositoryUrl:
+    Description: The name of the Ecr Repository
+    Value: !Join ['',[!Ref 'AWS::AccountId','.dkr.ecr.',!Ref 'AWS::Region','.amazonaws.com/',!Ref 'Repository']]

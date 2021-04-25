@@ -1,0 +1,326 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Template for Continuous Deployment using Github and Fargate
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment Name
+    Default: ""
+  Repository:
+    Type: String
+  GitHubRepo:
+    Type: String
+  GitHubBranch:
+    Type: String
+  GitHubToken:
+    Type: String
+    NoEcho: true
+  GitHubUser:
+    Type: String
+  OnlyBuild:
+    Type: String
+    Description: "Enable to avoid deploying the application, just use for building"
+    Default: false
+  CodebuildCompute:
+    Type: String
+    Description: "The type of compute environment. This determines the number of CPU cores and memory the build environment uses"
+    Default: "BUILD_GENERAL1_SMALL"
+  CodebuildImage:
+    Type: String
+    Description: "The image tag or image digest that identifies the Docker image to use for this build project"
+    Default: "aws/codebuild/docker:17.09.0"
+  BuildSpec:
+    Type: String
+    Description: "The build specification for the project. If this value is not provided, then the source code must contain a buildspec file named buildspec.yml at the root level"
+    Default: "buildspec.yml"
+  ProjectName:
+    Type: String
+    Description: "The name of the build project. The name must be unique across all of the projects in your AWS account."
+    Default: ""
+  Cluster:
+    Type: String
+    Default: ""
+    Description: "Cluster name"
+  ImageName:
+    Type: String
+    Description: "Image Name to save in ECR"
+    Default: ""
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VpcId"
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "Subnets"
+  S3ArtifactBucket:
+    Type: String
+    Description: "S3 Artifact Bucket"
+  Service:
+    Type: String
+    Description: "The service name of ECS Tasks"
+
+Conditions:
+   HasProjectName: !Not [ !Equals [!Ref 'ProjectName', ""] ]
+   UseOnlyBuild: !Equals [!Ref 'OnlyBuild', "true"]
+   UseDeploy:  !Equals [!Ref 'OnlyBuild', "false"]
+
+Resources:
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeDhcpOptions
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeVpcs
+                  - ec2:CreateNetworkInterfacePermission
+              - Resource: !Sub arn:aws:s3:::${S3ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Repository}
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource:
+                  - !Sub arn:aws:s3:::${S3ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Ref BuildSpec
+      Cache:
+        Type: LOCAL
+        Modes: 
+          - LOCAL_SOURCE_CACHE
+          - LOCAL_DOCKER_LAYER_CACHE
+          - LOCAL_CUSTOM_CACHE
+      Environment:
+        ComputeType: !Ref CodebuildCompute
+        Image: !Ref CodebuildImage
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: REPOSITORY_URI
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+      Name: !If ['HasProjectName', !Join ['',[!Ref Environment,'-',!Ref 'ProjectName']], !Ref "AWS::NoValue"]
+      ServiceRole: !Ref CodeBuildServiceRole
+      VpcConfig:
+          SecurityGroupIds: 
+            - !Ref SgCodeBuild
+          Subnets:
+            - !Select [0, !Ref Subnets]
+            - !Select [1, !Ref Subnets]
+          VpcId: !Ref VpcId
+  #SGs
+  SgCodeBuild:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Grants access to Codebuild
+      VpcId: !Ref VpcId
+      Tags:
+      - Key: Name
+        Value: !Sub "${AWS::StackName}-sg"
+
+  SgEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref 'SgCodeBuild'
+      IpProtocol: '-1'
+      CidrIp: 0.0.0.0/0
+  CodeBuildecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other instance in the same security group
+      IpProtocol: -1
+      GroupId: !Ref 'SgCodeBuild'
+      SourceSecurityGroupId: !Ref 'SgCodeBuild' 
+
+  ##############################################################################
+  ### This resource is a workaround to use only for building the application ###
+  PipelineOnlyBuild:
+    Type: AWS::CodePipeline::Pipeline
+    Condition: UseOnlyBuild
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Name: !If ['HasProjectName', !Join ['',[!Ref Environment,'-',!Ref 'ProjectName']], !Ref "AWS::NoValue"]
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Condition: UseDeploy
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Name: !If ['HasProjectName', !Join ['',[!Ref Environment,'-',!Ref 'ProjectName']], !Ref "AWS::NoValue"]
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: DeployWeb
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ECS
+              Configuration:
+                ClusterName: !Ref Cluster
+                ServiceName: !Ref Service
+                FileName: images.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+Outputs:
+  PipelineUrl:
+    Condition: UseDeploy
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}
+  PipelineBuildUrl:
+    Condition: UseOnlyBuild
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${PipelineOnlyBuild}
+  SgId:
+    Description: CodeBuild Security Group ID
+    Value: !Ref SgCodeBuild
+  CodePipelineName:
+    Description: CodePipeline Name
+    Value: !Sub ${Environment}-${ProjectName}
+    Condition: HasProjectName

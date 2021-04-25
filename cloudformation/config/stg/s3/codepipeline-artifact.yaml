@@ -1,0 +1,5 @@
+template_path: s3/s3.yaml
+
+parameters:
+  Environment: {{ stack_group_config.env }}
+  BucketName: {{ stack_group_config.project_code }}

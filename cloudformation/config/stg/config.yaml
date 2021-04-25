@@ -1,0 +1,8 @@
+# Main
+project_code: devops-exercise 
+region: eu-west-2
+template_bucket_name: stg-sceptre-devops-exercise
+env: stg
+
+# Domains
+private_dns: devops.exercise.internal

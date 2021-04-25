@@ -1,0 +1,20 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - $(aws ecr get-login --no-include-email)
+      - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+      - IMAGE_URI="${REPOSITORY_URI}:${TAG}"
+  build:
+    commands:
+      - docker build -t "$IMAGE_URI" -f Dockerfile .
+      - docker tag "$IMAGE_URI" "${REPOSITORY_URI}:latest"
+  post_build:
+    commands:
+      - docker run --name ahsan-nginx -d -p 8080:80 "${REPOSITORY_URI}:latest"
+      - if [ $? -eq 1]; then
+        exit 1 
+        fi
+      - docker push "$IMAGE_URI"
+      - docker push "${REPOSITORY_URI}:latest"

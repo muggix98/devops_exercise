@@ -1,0 +1,18 @@
+template_path: fargate/tasks/nginx.yaml
+parameters:
+  VpcId:  !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::VpcId
+  VpcSubnetsIds: !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::PrivateSubnetsList
+  ExecutionRoleArn: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::ECSTaskExecutionRole
+  ClusterName: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::ClusterName
+  ClusterLogsGroup: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::ClusterLogsGroup
+  FargateContainerSecurityGroup: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::FargateContainerSecurityGroup
+  PublicListenerArn: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::PublicListener
+  ImageUrl: !stack_output {{ stack_group_config.env }}/fargate/ecr/main.yaml::RepositoryUrl
+
+  #nginx
+  Environment: {{ stack_group_config.env }}
+  ImageVersion: 'latest'
+  ServiceName: 'nginx'
+  Priority: "1"
+  DesiredCount: "0"
+  PlatformVersion: "1.4.0"

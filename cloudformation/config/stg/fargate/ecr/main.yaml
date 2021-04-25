@@ -1,0 +1,3 @@
+template_path: fargate/ecr/ecr.yaml
+parameters:
+  RepositoryName: {{ stack_group_config.env }}-{{ stack_group_config.project_code }}

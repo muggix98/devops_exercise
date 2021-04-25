@@ -1,0 +1,21 @@
+template_path: vpc/vpc.yaml
+parameters:
+
+  VPCCIDR: '10.3.0.0/16'
+  AvailabilityZones: "eu-west-2a,eu-west-2b,eu-west-2c"
+  NumberOfAZs: "3"
+  InternalDomain: {{ stack_group_config.private_dns }}
+
+  PrivateSubnet1ACIDR: 10.3.0.0/19
+  PrivateSubnet2ACIDR: 10.3.32.0/19
+  PrivateSubnet3ACIDR: 10.3.64.0/19
+
+  PublicSubnet1CIDR: 10.3.128.0/20
+  PublicSubnet2CIDR: 10.3.144.0/20
+  PublicSubnet3CIDR: 10.3.160.0/20
+  
+  Environment: {{ stack_group_config.env }}
+
+
+
+  

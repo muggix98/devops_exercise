@@ -1,0 +1,20 @@
+template_path: codepipeline/codepipeline.yaml
+parameters:
+
+  Cluster: !stack_output {{ stack_group_config.env }}/fargate/cluster/nginx.yaml::ClusterName
+  Repository: !stack_output {{ stack_group_config.env }}/fargate/ecr/main.yaml::Repository
+  Service: !stack_output {{ stack_group_config.env }}/fargate/tasks/nginx.yaml::ServiceName
+  VpcId: !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::VpcId
+  Subnets: !stack_output {{ stack_group_config.env }}/vpc/vpc.yaml::PrivateSubnetsList
+  S3ArtifactBucket: !stack_output {{ stack_group_config.env }}/s3/codepipeline-artifact.yaml::BucketName
+
+
+  Environment: {{ stack_group_config.env }}
+  GitHubRepo: "devops_exercise"
+  GitHubBranch: "main"
+  GitHubToken: !ssm /stg/CodeP/GitHubToken
+  GitHubUser: "muggix98"
+  ProjectName: "nginx"
+  ImageName: "nginx"
+  CodebuildCompute: "BUILD_GENERAL1_MEDIUM"
+  BuildSpec: "buildspec_codepipeline.yml"
