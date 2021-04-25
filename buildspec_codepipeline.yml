@@ -16,3 +16,6 @@ phases:
       - if [ $? -eq 1]; then exit 1; fi
       - docker push "$IMAGE_URI"
       - docker push "${REPOSITORY_URI}:latest"
+artifacts:
+  files: 
+    - images.json
